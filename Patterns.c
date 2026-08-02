@@ -3,17 +3,35 @@
 //
 
 #include "Patterns.h"
+#include "stm32f1xx_hal.h"
 
-const FlashStep activePattern[MAX_PATTERN_LENGTH] = {
-    // red long-short
-    {MAX_BRIGHTNESS, 0, 0, 160},
-    {0,              0, 0,  20},
-    {MAX_BRIGHTNESS, 0, 0, 50},
-    {0,              0, 0,  30},
-    // blue long-short
-    {0, MAX_BRIGHTNESS, 0, 160},
-    {0,              0, 0,  20},
-    {0, MAX_BRIGHTNESS, 0, 50},
-    {0,              0, 0,  30},
+Pattern_t activePattern = {
+    {
+        // red group
+        {
+            {
+                {160, true}, {20, false}, {50, true}, {290, false},
+            },
+            {
+                {GPIOB, 10},
+                {GPIOB, 11},
+                {GPIOA, 3}
+            }
+        },
+        // blue group
+        {
+            {
+                {260, false}, {160, true}, {20, false}, {50, true}, {30, false}
+            },
+            {
+                {GPIOB, 0},
+                {GPIOB, 1},
+                {GPIOA, 2}
+            }
+        }
+    }
 };
-const uint16_t activePatternLength = sizeof(activePattern) / sizeof(activePattern[0]);
+
+uint8_t ActivePatternLenght() {
+    return sizeof(activePattern) / sizeof(activePattern[0]);
+}
