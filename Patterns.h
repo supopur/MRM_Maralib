@@ -47,6 +47,5 @@ typedef struct {
 } Pattern_t;
 
 extern Pattern_t activePattern;
-extern Pattern_t activePatternNight;
 
 #endif // MAJAK_PATTERNS_H
