@@ -5,7 +5,7 @@
 #include "Patterns.h"
 #include "stm32f1xx_hal.h"
 
-#define STEP_LEN 1000
+#define STEP_LEN 300
 
 Pattern_t activePattern = {
     {
