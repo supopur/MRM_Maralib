@@ -11,7 +11,11 @@
 typedef struct {
     const Pattern_t *pattern;
 
-    uint16_t prefix[MAX_PATTERN_LENGTH + 1];
+    ///@brief Per-group cumulative dwell (breakpoint) tables.
+    ///       Each group can have its own step timing, as long as every
+    ///       non-empty group's total dwell equals total_cycle (they must
+    ///       all complete one full cycle together to stay in sync).
+    uint16_t prefix[MAX_PATTERN_GROUPS][MAX_PATTERN_LENGTH + 1];
     uint16_t total_cycle;
 
     uint32_t sync_timestamp;   ///< master's tick value at the moment of last sync
@@ -21,6 +25,11 @@ typedef struct {
 
 void GlobalSync_Init(GlobalSyncHandle *handle);
 
+///@brief Load a pattern and build per-group breakpoint tables.
+///       Every group that defines at least one step (dwell != 0) must sum
+///       to the same total_cycle as the others, so all channels complete
+///       one loop together. Groups with no steps defined are treated as
+///       permanently off and are skipped during validation.
 bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern);
 
 ///@brief Record a sync point.
@@ -33,8 +42,8 @@ bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern);
 ///       compared against this node's own future HAL_GetTick() calls.
 void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint32_t master_timestamp, uint32_t local_timestamp);
 
-uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint32_t timestamp);
-uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp);
+uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint32_t timestamp, uint8_t group_index);
+uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp, uint8_t group_index);
 uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp);
 const FlashStep_t *GlobalSync_GetGroupStep(const GlobalSyncHandle *handle,
                                            uint32_t timestamp,
