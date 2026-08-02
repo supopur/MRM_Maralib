@@ -5,12 +5,14 @@
 #include "Patterns.h"
 #include "stm32f1xx_hal.h"
 
+#define STEP_LEN 200
+
 Pattern_t activePattern = {
     {
         // red group inverted (NPN — active low)
         {
             .steps = {
-                {160, true}, {20, false}, {50, true}, {290, false},
+                {2*STEP_LEN, true}, {STEP_LEN, false}, {STEP_LEN, true}, {4*STEP_LEN, false},
             },
             .inverted = true,
             .digitalOutputs = {
@@ -21,7 +23,7 @@ Pattern_t activePattern = {
         // red group normal (relay — active high)
         {
             .steps = {
-                {160, true}, {20, false}, {50, true}, {290, false},
+                    {2*STEP_LEN, true}, {STEP_LEN, false}, {STEP_LEN, true}, {4*STEP_LEN, false},
             },
             .inverted = false,
             .digitalOutputs = {
@@ -31,7 +33,7 @@ Pattern_t activePattern = {
         // blue group inverted (NPN — active low)
         {
             .steps = {
-                {260, false}, {160, true}, {20, false}, {50, true}, {30, false},
+                {4*STEP_LEN, false}, {2*STEP_LEN, true}, {STEP_LEN, false}, {STEP_LEN, true},
             },
             .inverted = true,
             .digitalOutputs = {
@@ -42,7 +44,7 @@ Pattern_t activePattern = {
         // blue group normal (relay — active high)
         {
             .steps = {
-                {260, false}, {160, true}, {20, false}, {50, true}, {30, false},
+                    {4*STEP_LEN, false}, {2*STEP_LEN, true}, {STEP_LEN, false}, {STEP_LEN, true},
             },
             .inverted = false,
             .digitalOutputs = {
