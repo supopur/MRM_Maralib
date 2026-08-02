@@ -13,13 +13,8 @@ uint8_t ARRToBrightness(uint16_t arr) {
 }
 
 void LightUtils_DriveGroup(const FlashGroup_t *group, const FlashStep_t *step) {
-    // intensity > 0 overrides active
-    bool     want_on     = step->intensity > 0 ? true : step->active;
-    uint16_t pwm_compare = step->intensity > 0 ? step->intensity
-                                                : (step->active ? 65535U : 0U);
-
     // Apply inversion for digital output — NPN drivers are active-low
-    GPIO_PinState digital_state = (want_on ^ group->inverted) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    GPIO_PinState digital_state = (step->active ^ group->inverted) ? GPIO_PIN_SET : GPIO_PIN_RESET;
 
     // Drive digital outputs
     for (uint8_t i = 0; i < MAX_PATTERN_FLASH_GROUP_OUTPUTS; i++) {
@@ -34,7 +29,7 @@ void LightUtils_DriveGroup(const FlashGroup_t *group, const FlashStep_t *step) {
         if (group->pwmOutputs[i].pwmTimer == NULL) break;
         __HAL_TIM_SET_COMPARE(group->pwmOutputs[i].pwmTimer,
                               group->pwmOutputs[i].pwmChannel,
-                              pwm_compare);
+                              step->intensity);
     }
 }
 
