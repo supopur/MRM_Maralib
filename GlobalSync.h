@@ -20,7 +20,7 @@ typedef struct {
     uint16_t prefix[MAX_PATTERN_LENGTH + 1];
     uint16_t total_cycle;   ///< sum of all dwell values for the active group (all groups must match)
 
-    uint16_t sync_timestamp;
+    uint32_t sync_timestamp;
     bool     is_synced;
 } GlobalSyncHandle;
 
@@ -42,25 +42,25 @@ bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern);
 ///       at roughly the same moment (e.g. on receipt of a CAN SYNC frame).
 ///@param handle    Pointer to an initialised handle.
 ///@param timestamp The shared timestamp value (e.g. lower 16 bits of HAL_GetTick()).
-void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint16_t timestamp);
+void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint32_t timestamp);
 
 ///@brief Get the current step index for the given timestamp.
 ///@param handle    Pointer to a ready handle.
 ///@param timestamp Current time value (same source as SetSyncPoint).
 ///@return Step index (0-based), or 0xFF if not synced / no pattern loaded.
-uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint16_t timestamp);
+uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint32_t timestamp);
 
 ///@brief Get the number of milliseconds remaining in the current step.
 ///@param handle    Pointer to a ready handle.
 ///@param timestamp Current time value.
 ///@return Remaining ms, or 0 if not ready.
-uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint16_t timestamp);
+uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp);
 
 ///@brief Get the current phase — elapsed ms within the current cycle.
 ///@param handle    Pointer to a ready handle.
 ///@param timestamp Current time value.
 ///@return Phase in ms, or 0 if not ready.
-uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint16_t timestamp);
+uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp);
 
 ///@brief Get the active FlashStep for a specific group at the given timestamp.
 ///@param handle      Pointer to a ready handle.
@@ -68,7 +68,7 @@ uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint16_t timestamp)
 ///@param group_index Index into pattern->groups[].
 ///@return Pointer to the current FlashStep_t, or NULL if not ready / out of range.
 const FlashStep_t *GlobalSync_GetGroupStep(const GlobalSyncHandle *handle,
-                                           uint16_t timestamp,
+                                           uint32_t timestamp,
                                            uint8_t  group_index);
 
 #endif // MAJAK_GLOBALSYNC_H

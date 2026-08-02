@@ -13,7 +13,7 @@ static bool is_ready(const GlobalSyncHandle *handle) {
 }
 
 // Internal: elapsed ms within the current cycle (wraps correctly on uint16 overflow)
-static uint16_t compute_phase(const GlobalSyncHandle *handle, uint16_t timestamp) {
+static uint16_t compute_phase(const GlobalSyncHandle *handle, uint32_t timestamp) {
     uint16_t elapsed = timestamp - handle->sync_timestamp;
     return elapsed % handle->total_cycle;
 }
@@ -62,18 +62,18 @@ bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern) {
     return true;
 }
 
-void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint16_t timestamp) {
+void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint32_t timestamp) {
     handle->sync_timestamp = timestamp;
     handle->is_synced      = true;
 }
 
-uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint16_t timestamp) {
+uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint32_t timestamp) {
     if (!is_ready(handle))
         return 0xFF;
     return phase_to_index(handle, compute_phase(handle, timestamp));
 }
 
-uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint16_t timestamp) {
+uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp) {
     if (!is_ready(handle))
         return 0;
     uint16_t phase = compute_phase(handle, timestamp);
@@ -81,14 +81,14 @@ uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint1
     return handle->prefix[idx + 1] - phase;
 }
 
-uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint16_t timestamp) {
+uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp) {
     if (!is_ready(handle))
         return 0;
     return compute_phase(handle, timestamp);
 }
 
 const FlashStep_t *GlobalSync_GetGroupStep(const GlobalSyncHandle *handle,
-                                           uint16_t timestamp,
+                                           uint32_t timestamp,
                                            uint8_t  group_index) {
     if (!is_ready(handle))
         return NULL;
