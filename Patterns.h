@@ -8,8 +8,8 @@
 #include "GPIO.h"
 
 
-#define MAX_PATTERN_LENGTH 32
-#define MAX_PATTERN_GROUPS 32
+#define MAX_PATTERN_LENGTH 16
+#define MAX_PATTERN_GROUPS 4
 #define MAX_BRIGHTNESS 100
 #define MAX_PATTERN_FLASH_GROUP_OUTPUTS 16
 
@@ -46,6 +46,7 @@ typedef struct {
 ///@brief Currently loaded pattern
 extern Pattern_t activePattern;
 
-uint8_t ActivePatternLenght();
+///@brief Currently loaded night time pattern
+extern Pattern_t activePatternNight;
 
 #endif //MAJAK_PATTERNS_H

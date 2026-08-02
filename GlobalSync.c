@@ -3,88 +3,101 @@
 //
 
 #include "GlobalSync.h"
-
-#include <stdbool.h>
 #include <string.h>
 
-/* ------------------------------------------------------------------ */
-/*  Internal helpers                                                    */
-/* ------------------------------------------------------------------ */
-
+// Internal: true when the handle has a pattern loaded and a sync point set
 static bool is_ready(const GlobalSyncHandle *handle) {
-    return handle->is_synced && handle->step_count > 0;
+    return handle->is_synced
+        && handle->pattern != NULL
+        && handle->total_cycle > 0;
 }
 
+// Internal: elapsed ms within the current cycle (wraps correctly on uint16 overflow)
 static uint16_t compute_phase(const GlobalSyncHandle *handle, uint16_t timestamp) {
-    uint16_t elapsed = timestamp - handle->sync_timestamp; /* wraps correctly */
+    uint16_t elapsed = timestamp - handle->sync_timestamp;
     return elapsed % handle->total_cycle;
 }
 
+// Internal: binary-search the prefix array to find which step owns the given phase
 static uint8_t phase_to_index(const GlobalSyncHandle *handle, uint16_t phase) {
-    for (uint8_t i = 0; i < handle->step_count; i++) {
+    // prefix[0] = 0, prefix[N] = total_cycle
+    // find i such that prefix[i] <= phase < prefix[i+1]
+    for (uint8_t i = 0; i < MAX_PATTERN_LENGTH; i++) {
+        if (handle->prefix[i + 1] == 0) break; // end of loaded steps
         if (phase < handle->prefix[i + 1])
             return i;
     }
-    return handle->step_count - 1; /* shouldn't happen */
+    return 0; // shouldn't happen if prefix is consistent
 }
-
-/* ------------------------------------------------------------------ */
-/*  Public API                                                          */
-/* ------------------------------------------------------------------ */
 
 void GlobalSync_Init(GlobalSyncHandle *handle) {
     memset(handle, 0, sizeof(GlobalSyncHandle));
 }
 
-bool GlobalSync_SetPattern(GlobalSyncHandle *handle,
-                           const FlashStep *steps,
-                           uint8_t step_count) {
-    if (step_count == 0 || step_count > MAX_PATTERN_LENGTH)
+bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern) {
+    if (pattern == NULL)
         return false;
 
-    /* Build prefix sums, check for uint16 overflow */
+    // Use group 0 as the timing reference — all groups must have identical dwell sequences
+    const FlashGroup_t *ref = &pattern->groups[0];
+
     uint32_t accum = 0;
     handle->prefix[0] = 0;
-    for (uint8_t i = 0; i < step_count; i++) {
-        accum += steps[i].ms;
+    uint8_t step_count = 0;
+
+    for (uint8_t i = 0; i < MAX_PATTERN_LENGTH; i++) {
+        if (ref->steps[i].dwell == 0) break; // zero dwell = end of sequence
+        accum += ref->steps[i].dwell;
         if (accum > UINT16_MAX)
             return false;
-        handle->prefix[i + 1] = (uint16_t) accum;
+        handle->prefix[i + 1] = (uint16_t)accum;
+        step_count = i + 1;
     }
 
-    handle->steps = steps;
-    handle->step_count = step_count;
-    handle->total_cycle = (uint16_t) accum;
+    if (step_count == 0)
+        return false;
 
+    handle->pattern     = pattern;
+    handle->total_cycle = (uint16_t)accum;
     return true;
 }
 
 void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint16_t timestamp) {
     handle->sync_timestamp = timestamp;
-    handle->is_synced = true;
+    handle->is_synced      = true;
 }
 
 uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint16_t timestamp) {
     if (!is_ready(handle))
         return 0xFF;
-
-    uint16_t phase = compute_phase(handle, timestamp);
-    return phase_to_index(handle, phase);
+    return phase_to_index(handle, compute_phase(handle, timestamp));
 }
 
 uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint16_t timestamp) {
     if (!is_ready(handle))
         return 0;
-
     uint16_t phase = compute_phase(handle, timestamp);
-    uint8_t idx = phase_to_index(handle, phase);
-
+    uint8_t  idx   = phase_to_index(handle, phase);
     return handle->prefix[idx + 1] - phase;
 }
 
 uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint16_t timestamp) {
     if (!is_ready(handle))
         return 0;
-
     return compute_phase(handle, timestamp);
+}
+
+const FlashStep_t *GlobalSync_GetGroupStep(const GlobalSyncHandle *handle,
+                                           uint16_t timestamp,
+                                           uint8_t  group_index) {
+    if (!is_ready(handle))
+        return NULL;
+    if (group_index >= MAX_PATTERN_GROUPS)
+        return NULL;
+
+    uint8_t idx = GlobalSync_GetIndex(handle, timestamp);
+    if (idx == 0xFF)
+        return NULL;
+
+    return &handle->pattern->groups[group_index].steps[idx];
 }

@@ -32,6 +32,29 @@ Pattern_t activePattern = {
     }
 };
 
-uint8_t ActivePatternLenght() {
-    return sizeof(activePattern) / sizeof(activePattern[0]);
-}
+Pattern_t activePatternNight = {
+    {
+        // red group
+        {
+            {
+                {160, true}, {20, false}, {50, true}, {290, false},
+            },
+            {
+                    {GPIOB, 10},
+                    {GPIOB, 11},
+                    {GPIOA, 3}
+            }
+        },
+        // blue group
+        {
+                {
+                    {260, false}, {160, true}, {20, false}, {50, true}, {30, false}
+                },
+                {
+                    {GPIOB, 0},
+                    {GPIOB, 1},
+                    {GPIOA, 2}
+                }
+        }
+    }
+};

@@ -4,28 +4,33 @@
 
 #include "LightUtils.h"
 
-uint16_t PercentageToARR(float percentage) {
-    return (uint16_t)(percentage / 100.0f * 65535.0f);
+uint16_t BrightnessToARR(uint8_t percentage) {
+    return (uint16_t)((uint32_t)percentage * 65535U / MAX_BRIGHTNESS);
 }
 
-uint8_t ARRToPercentage(uint16_t arr) {
-    return (uint8_t)((arr * 100U) / 65535U);
+uint8_t ARRToBrightness(uint16_t arr) {
+    return (uint8_t)((uint32_t)arr * MAX_BRIGHTNESS / 65535U);
 }
 
-// not in degrees but in raw ADC values
-static uint16_t targetReading = 0;
-static uint16_t currentReading = 0;
+void LightUtils_DriveGroup(const FlashGroup_t *group, const FlashStep_t *step) {
+    // intensity > 0 overrides active for both output types
+    bool     digital_on  = step->intensity > 0 ? true : step->active;
+    uint16_t pwm_compare = step->intensity > 0 ? step->intensity
+                                                : (step->active ? 65535U : 0U);
 
-uint16_t SetPWM(uint16_t dutyCycle, uint32_t Channel, TIM_HandleTypeDef* tim) {
-    int32_t correction = (int32_t)P_CONTROLLER_GAIN * ((int32_t)targetReading - (int32_t)currentReading);
-    int32_t output = (int32_t)dutyCycle - correction;
-    if (output < 0) output = 0;
-    if (output > (int32_t)dutyCycle) output = (int32_t)dutyCycle;
-    __HAL_TIM_SET_COMPARE(tim, Channel, (uint16_t)output);
-    return (uint16_t)output;
-}
+    // Drive digital outputs
+    for (uint8_t i = 0; i < MAX_PATTERN_FLASH_GROUP_OUTPUTS; i++) {
+        if (group->digitalOutputs[i].outputPort == NULL) break;
+        HAL_GPIO_WritePin(group->digitalOutputs[i].outputPort,
+                          group->digitalOutputs[i].outputPin,
+                          digital_on ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    }
 
-void UpdateCurrentTemp(uint16_t currentTempReading, uint16_t targetTempReading) {
-    currentReading = currentTempReading;
-    targetReading = targetTempReading;
+    // Drive PWM outputs
+    for (uint8_t i = 0; i < MAX_PATTERN_FLASH_GROUP_OUTPUTS; i++) {
+        if (group->pwmOutputs[i].pwmTimer == NULL) break;
+        __HAL_TIM_SET_COMPARE(group->pwmOutputs[i].pwmTimer,
+                              group->pwmOutputs[i].pwmChannel,
+                              pwm_compare);
+    }
 }
