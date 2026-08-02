@@ -1,33 +1,31 @@
-//
-// Created by mat on 6/25/26.
-//
-
 #include "GlobalSync.h"
 #include <string.h>
 
-// Internal: true when the handle has a pattern loaded and a sync point set
 static bool is_ready(const GlobalSyncHandle *handle) {
     return handle->is_synced
         && handle->pattern != NULL
         && handle->total_cycle > 0;
 }
 
-// Internal: elapsed ms within the current cycle (wraps correctly on uint16 overflow)
-static uint16_t compute_phase(const GlobalSyncHandle *handle, uint32_t timestamp) {
-    uint16_t elapsed = timestamp - handle->sync_timestamp;
-    return elapsed % handle->total_cycle;
+// elapsed ms within the current cycle, computed WITHOUT ever mixing
+// two different clocks in one subtraction:
+//   - (timestamp - local_ref_tick) is this node's own clock vs itself: always valid.
+//   - sync_timestamp (master's phase reference) is only ever ADDED, never subtracted
+//     from a local tick.
+static uint32_t compute_phase(const GlobalSyncHandle *handle, uint32_t timestamp)
+{
+    uint32_t elapsed_local = timestamp - handle->local_ref_tick; // same-clock diff, wraps correctly
+    uint32_t phase         = elapsed_local + handle->sync_timestamp;
+    return phase % handle->total_cycle;
 }
 
-// Internal: binary-search the prefix array to find which step owns the given phase
-static uint8_t phase_to_index(const GlobalSyncHandle *handle, uint16_t phase) {
-    // prefix[0] = 0, prefix[N] = total_cycle
-    // find i such that prefix[i] <= phase < prefix[i+1]
-    for (uint8_t i = 0; i < MAX_PATTERN_LENGTH; i++) {
-        if (handle->prefix[i + 1] == 0) break; // end of loaded steps
+static uint8_t phase_to_index(const GlobalSyncHandle *handle, uint32_t phase) {
+    for (uint16_t i = 0; i < MAX_PATTERN_LENGTH; i++) {
+        if (handle->prefix[i + 1] == 0) break;
         if (phase < handle->prefix[i + 1])
-            return i;
+            return (uint8_t)i;
     }
-    return 0; // shouldn't happen if prefix is consistent
+    return 0;
 }
 
 void GlobalSync_Init(GlobalSyncHandle *handle) {
@@ -38,15 +36,15 @@ bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern) {
     if (pattern == NULL)
         return false;
 
-    // Use group 0 as the timing reference — all groups must have identical dwell sequences
     const FlashGroup_t *ref = &pattern->groups[0];
+    memset(handle->prefix, 0, sizeof(handle->prefix));
 
     uint32_t accum = 0;
     handle->prefix[0] = 0;
     uint8_t step_count = 0;
 
     for (uint8_t i = 0; i < MAX_PATTERN_LENGTH; i++) {
-        if (ref->steps[i].dwell == 0) break; // zero dwell = end of sequence
+        if (ref->steps[i].dwell == 0) break;
         accum += ref->steps[i].dwell;
         if (accum > UINT16_MAX)
             return false;
@@ -62,8 +60,9 @@ bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern) {
     return true;
 }
 
-void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint32_t timestamp) {
-    handle->sync_timestamp = timestamp;
+void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint32_t master_timestamp, uint32_t local_timestamp) {
+    handle->sync_timestamp = master_timestamp;
+    handle->local_ref_tick = local_timestamp;
     handle->is_synced      = true;
 }
 
@@ -76,15 +75,15 @@ uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint32_t timestamp) 
 uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp) {
     if (!is_ready(handle))
         return 0;
-    uint16_t phase = compute_phase(handle, timestamp);
+    uint32_t phase = compute_phase(handle, timestamp);
     uint8_t  idx   = phase_to_index(handle, phase);
-    return handle->prefix[idx + 1] - phase;
+    return handle->prefix[idx + 1] - (uint16_t)phase;
 }
 
 uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp) {
     if (!is_ready(handle))
         return 0;
-    return compute_phase(handle, timestamp);
+    return (uint16_t)compute_phase(handle, timestamp);
 }
 
 const FlashStep_t *GlobalSync_GetGroupStep(const GlobalSyncHandle *handle,
