@@ -7,70 +7,94 @@
 
 Pattern_t activePattern = {
     {
-        // red group inverted (npn)
+        // red group inverted (NPN — active low)
         {
-            {
-                {160, false}, {20, true}, {50, false}, {290, true},
-            },
-            {
-                {GPIOB, 10},
-                {GPIOB, 11}
-            }
-        },
-        // red group normal (relay)
-        {
-            {
+            .steps = {
                 {160, true}, {20, false}, {50, true}, {290, false},
             },
-            {
-                {GPIOA, 3}
-            }
-        },
-        // blue group inverted (npn)
-        {
-            {
-                {260, true}, {160, false}, {20, true}, {50, false}, {30, true}
+            .inverted = true,
+            .digitalOutputs = {
+                {GPIOB, GPIO_PIN_10},
+                {GPIOB, GPIO_PIN_11},
             },
-            {
-                {GPIOB, 0},
-                {GPIOB, 1}
-            }
         },
-        // blue group normal (relay)
+        // red group normal (relay — active high)
         {
-            {
-                {260, false}, {160, true}, {20, false}, {50, true}, {30, false}
+            .steps = {
+                {160, true}, {20, false}, {50, true}, {290, false},
             },
-            {
-                {GPIOA, 2}
-            }
-        }
+            .inverted = false,
+            .digitalOutputs = {
+                {GPIOA, GPIO_PIN_3},
+            },
+        },
+        // blue group inverted (NPN — active low)
+        {
+            .steps = {
+                {260, false}, {160, true}, {20, false}, {50, true}, {30, false},
+            },
+            .inverted = true,
+            .digitalOutputs = {
+                {GPIOB, GPIO_PIN_0},
+                {GPIOB, GPIO_PIN_1},
+            },
+        },
+        // blue group normal (relay — active high)
+        {
+            .steps = {
+                {260, false}, {160, true}, {20, false}, {50, true}, {30, false},
+            },
+            .inverted = false,
+            .digitalOutputs = {
+                {GPIOA, GPIO_PIN_2},
+            },
+        },
     }
 };
 
 Pattern_t activePatternNight = {
     {
-        // red group
+        // red group inverted (NPN)
         {
-            {
+            .steps = {
                 {160, true}, {20, false}, {50, true}, {290, false},
             },
-            {
-                {GPIOB, 10},
-                {GPIOB, 11},
-                {GPIOA, 3}
-            }
-        },
-        // blue group
-        {
-            {
-                {260, false}, {160, true}, {20, false}, {50, true}, {30, false}
+            .inverted = true,
+            .digitalOutputs = {
+                {GPIOB, GPIO_PIN_10},
+                {GPIOB, GPIO_PIN_11},
             },
-            {
-                {GPIOB, 0},
-                {GPIOB, 1},
-                {GPIOA, 2}
-            }
-        }
+        },
+        // red group normal (relay)
+        {
+            .steps = {
+                {160, true}, {20, false}, {50, true}, {290, false},
+            },
+            .inverted = false,
+            .digitalOutputs = {
+                {GPIOA, GPIO_PIN_3},
+            },
+        },
+        // blue group inverted (NPN)
+        {
+            .steps = {
+                {260, false}, {160, true}, {20, false}, {50, true}, {30, false},
+            },
+            .inverted = true,
+            .digitalOutputs = {
+                {GPIOB, GPIO_PIN_0},
+                {GPIOB, GPIO_PIN_1},
+            },
+        },
+        // blue group normal (relay)
+        {
+            .steps = {
+                {260, false}, {160, true}, {20, false}, {50, true}, {30, false},
+            },
+            .inverted = false,
+            .digitalOutputs = {
+                {GPIOA, GPIO_PIN_2},
+            },
+        },
     }
 };
