@@ -27,4 +27,8 @@ void LightUtils_DriveGroup(const FlashGroup_t *group, const FlashStep_t *step);
 ///@param group Pointer to the group to blank.
 void LightUtils_DriveGroupOff(const FlashGroup_t *group);
 
+uint8_t LightUtils_GetLights(void);
+void LightUtils_SetLights(uint8_t status);
+
+void LightUtils_Run(void);
 #endif // MAJAK_LIGHTUTILS_H
