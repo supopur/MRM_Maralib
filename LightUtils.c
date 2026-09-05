@@ -11,9 +11,9 @@
 
 #define NIGHT_MODE_BRIGHTNESS   ((uint16_t)(65535U * 40 / 100))   /* 40 % of full ARR */
 
-static volatile uint8_t lights_active = 0;
-static volatile uint8_t night_mode_active = 0;
-static volatile uint8_t takedowns_active = 0;
+static volatile bool lightsActive = false;
+static volatile bool nightModeActive = false;
+static volatile bool takedownsActive = false;
 
 uint16_t BrightnessToARR(uint8_t percentage) {
     return (uint16_t)((uint32_t)percentage * 65535U / MAX_BRIGHTNESS);
@@ -50,12 +50,28 @@ void LightUtils_DriveGroupOff(const FlashGroup_t *group) {
     LightUtils_DriveGroup(group, &offStep);
 }
 
-uint8_t LightUtils_GetLights(void) {
-    return lights_active;
+bool LightUtils_GetLights(void) {
+    return lightsActive;
 }
 
-void LightUtils_SetLights(uint8_t status) {
-    lights_active = status;
+void LightUtils_SetLights(bool status) {
+    lightsActive = status;
+}
+
+bool LightUtils_GetNightMode(void) {
+    return nightModeActive;
+}
+
+void LightUtils_SetNightMode(bool status) {
+    nightModeActive = status;
+}
+
+bool LightUtils_GetTakedowns(void) {
+    return takedownsActive;
+}
+
+void LightUtils_SetTakedowns(bool status) {
+    takedownsActive = status;
 }
 
 /**
@@ -73,52 +89,20 @@ static void DriveGroupNightMode(const FlashGroup_t *group, const FlashStep_t *st
     LightUtils_DriveGroup(group, &nightStep);
 }
 
-static uint8_t prev_night_mode = 0;
+static bool prevNightMode = false;
 static uint32_t lastSend = 0;
 extern GlobalSyncHandle sync;
 
 void LightUtils_Run(void) {
     /* ---- Night mode pattern switch ---- */
-        if (night_mode_active != prev_night_mode)
+        if (nightModeActive != prevNightMode)
         {
-            prev_night_mode = night_mode_active;
-            GlobalSync_SetPattern(&sync, night_mode_active ? &nightPattern : &normalPattern);
-        }
-
-        /* ---- CAN receive (polled fallback) ---- */
-        if (HAL_CAN_GetRxFifoFillLevel(&hcan, CAN_RX_FIFO0) > 0)
-        {
-            CAN_RxHeaderTypeDef header;
-            uint8_t data[8];
-
-            if (HAL_CAN_GetRxMessage(&hcan, CAN_RX_FIFO0, &header, data) == HAL_OK)
-            {
-                if (header.StdId == 0x010)
-                {
-                    uint32_t ts = ((uint32_t)data[0] << 24) |
-                                  ((uint32_t)data[1] << 16) |
-                                  ((uint32_t)data[2] << 8)  |
-                                  ((uint32_t)data[3]);
-
-                    GlobalSync_SetSyncPoint(&sync, ts, HAL_GetTick());
-                }
-                else if (data[0] == 0x01)
-                {
-                    lights_active = data[1];
-                }
-                else if (data[0] == 0x02)
-                {
-                    night_mode_active = data[1];
-                }
-                else if (data[0] == 0x03)
-                {
-                    takedowns_active = data[1] > 0;
-                }
-            }
+            prevNightMode = nightModeActive;
+            GlobalSync_SetPattern(&sync, nightModeActive ? &nightPattern : &normalPattern);
         }
 
         /* ---- Drive outputs ---- */
-        if (lights_active)
+        if (lightsActive)
         {
             uint32_t ts = HAL_GetTick();
 
@@ -128,7 +112,7 @@ void LightUtils_Run(void) {
                 if (step == NULL)
                     continue;
 
-                if (night_mode_active)
+                if (nightModeActive)
                     DriveGroupNightMode(&normalPattern.groups[g], step);
                 else
                     LightUtils_DriveGroup(&normalPattern.groups[g], step);
@@ -141,7 +125,7 @@ void LightUtils_Run(void) {
         }
 
         /* ---- Takedowns ---- */
-        if (takedowns_active)
+        if (takedownsActive)
         {
             __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 65000);
         }
