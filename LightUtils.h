@@ -36,5 +36,8 @@ void LightUtils_SetNightMode(bool status);
 bool LightUtils_GetTakedowns(void);
 void LightUtils_SetTakedowns(bool status);
 
+uint8_t LightUtils_GetBrightness(void);
+void LightUtils_SetBrightness(uint8_t brightness);
+
 void LightUtils_Run(void);
 #endif // MAJAK_LIGHTUTILS_H

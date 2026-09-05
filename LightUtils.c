@@ -14,13 +14,14 @@
 static volatile bool lightsActive = false;
 static volatile bool nightModeActive = false;
 static volatile bool takedownsActive = false;
+static volatile uint8_t currentBrightness = MAX_BRIGHTNESS;
 
 uint16_t BrightnessToARR(uint8_t percentage) {
-    return (uint16_t)((uint32_t)percentage * 65535U / MAX_BRIGHTNESS);
+    return (uint16_t)((uint32_t)percentage * 65535U / currentBrightness);
 }
 
 uint8_t ARRToBrightness(uint16_t arr) {
-    return (uint8_t)((uint32_t)arr * MAX_BRIGHTNESS / 65535U);
+    return (uint8_t)((uint32_t)arr * currentBrightness / 65535U);
 }
 
 void LightUtils_DriveGroup(const FlashGroup_t *group, const FlashStep_t *step) {
@@ -72,6 +73,14 @@ bool LightUtils_GetTakedowns(void) {
 
 void LightUtils_SetTakedowns(bool status) {
     takedownsActive = status;
+}
+
+uint8_t LightUtils_GetBrightness(void) {
+    return currentBrightness;
+}
+
+void LightUtils_SetBrightness(uint8_t brightness) {
+    currentBrightness = brightness;
 }
 
 /**
