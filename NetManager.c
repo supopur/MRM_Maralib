@@ -18,6 +18,12 @@
 #define NODEADDR_ADDR   ((uint32_t*)(SRAM_BASE + 0x1004))
 #define MAGIC_VAL  0x36051bf3UL
 #define MAGIC_ADDR ((uint32_t*)(SRAM_BASE + 0x1000))
+#define BOOT_NODE_SHIFT 8U
+
+__attribute__((section(".boot_ipc"), used))
+static volatile uint32_t g_boot_magic    __attribute__((aligned(4)));
+__attribute__((section(".boot_ipc"), used))
+static volatile uint32_t g_boot_nodeaddr __attribute__((aligned(4)));
 
 // our own address assigned by the master controller, 0 falls back to "localhost"
 uint8_t ourAddr = 0;
@@ -81,8 +87,9 @@ void NetManager_ProcessMessage() {
             break;
         case CAN_PROTOCOL_ENTER_BOOT:
             *MAGIC_ADDR = MAGIC_VAL;
+            *NODEADDR_ADDR = ((uint32_t)NODEADDR_MAGIC << BOOT_NODE_SHIFT) | (uint32_t)ourAddr;
+            __DSB();
             NVIC_SystemReset();
-            break;
     }
 }
 
@@ -147,7 +154,7 @@ void NetManager_ProcessDHCPMessage() {
         ourAddr = currentPayload[1];
 
         // store the address for the bootloader in case we need to reboot into it
-        *NODEADDR_ADDR = (NODEADDR_MAGIC << 8) | ourAddr;
+        *NODEADDR_ADDR = ((uint32_t)NODEADDR_MAGIC << BOOT_NODE_SHIFT) | (uint32_t)ourAddr;
     }
 }
 
