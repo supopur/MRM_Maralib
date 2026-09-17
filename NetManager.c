@@ -20,6 +20,9 @@
 #define MAGIC_ADDR ((uint32_t*)(SRAM_BASE + 0x1000))
 #define BOOT_NODE_SHIFT 8U
 
+// Takedowns bit mask
+#define TAKEDOWNS_BIT_MASK 0b11111111
+
 __attribute__((section(".boot_ipc"), used))
 static volatile uint32_t g_boot_magic    __attribute__((aligned(4)));
 __attribute__((section(".boot_ipc"), used))
@@ -84,6 +87,11 @@ void NetManager_ProcessMessage() {
 
             LightUtils_SetBrightness(brightness);
 
+            break;
+        case CAN_PROTOCOL_SET_TAKEDOWNS:
+            if ((currentPayload[1] & TAKEDOWNS_BIT_MASK) != 0) {
+                LightUtils_SetTakedowns(currentPayload[2] != 0);
+            }
             break;
         case CAN_PROTOCOL_ENTER_BOOT:
             *MAGIC_ADDR = MAGIC_VAL;
