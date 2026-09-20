@@ -39,5 +39,11 @@ void LightUtils_SetTakedowns(bool status);
 uint8_t LightUtils_GetBrightness(void);
 void LightUtils_SetBrightness(uint8_t brightness);
 
+void LightUtils_SetThermalThrottle(uint8_t throttlePercent);
+uint8_t LightUtils_GetThermalThrottle(void);
+
+void LightUtils_SetOverheatShutdown(bool shutdown);
+bool LightUtils_GetOverheatShutdown(void);
+
 void LightUtils_Run(void);
 #endif // MAJAK_LIGHTUTILS_H

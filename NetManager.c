@@ -42,7 +42,7 @@ HAL_StatusTypeDef NetManager_SendCanFrame(uint16_t stdId, uint8_t *payload, uint
 
     uint32_t mailbox;
 
-    return HAL_CAN_AddTxMessage(&hcan, &header, payload, &mailbox) != HAL_OK;
+    return HAL_CAN_AddTxMessage(&hcan, &header, payload, &mailbox);
 }
 
 void NetManager_SendCanByte(uint8_t subMsgID, uint8_t state) {
@@ -71,7 +71,7 @@ void NetManager_ProcessMessage() {
         case CAN_PROTOCOL_GET_LIGHTS:
             NetManager_SendCanByte(CAN_PROTOCOL_GET_LIGHTS, LightUtils_GetLights());
             break;
-        case CAN_PROTOCOL_SET_LIGHTS:
+        case CAN_PROTOCOL_SET_LIGHTS: {
             uint8_t status = currentPayload[1];
             //last bit
             bool lightsActive = status >> 7 & 1;
@@ -81,12 +81,21 @@ void NetManager_ProcessMessage() {
             LightUtils_SetLights(lightsActive);
             LightUtils_SetNightMode(nightMode);
             break;
-        case CAN_PROTOCOL_SET_BRIGHTNESS:
-            // 0-100%
-            uint8_t brightness = currentPayload[1];
+        }
+        case CAN_PROTOCOL_SET_BRIGHTNESS: {
+            uint8_t targetType = currentPayload[1];
+            uint8_t brightness = currentPayload[2];
 
-            LightUtils_SetBrightness(brightness);
-
+            if (brightness == 0 && targetType <= 100 && targetType != 0x00) {
+                // legacy format where payload[1] was brightness directly
+                LightUtils_SetBrightness(targetType);
+            } else if (targetType == 0x00 || targetType == 0xFF) {
+                LightUtils_SetBrightness(brightness);
+            }
+            break;
+        }
+        case CAN_PROTOCOL_GET_TAKEDOWNS:
+            NetManager_SendCanByte(CAN_PROTOCOL_GET_TAKEDOWNS, LightUtils_GetTakedowns());
             break;
         case CAN_PROTOCOL_SET_TAKEDOWNS:
             if ((currentPayload[1] & TAKEDOWNS_BIT_MASK) != 0) {

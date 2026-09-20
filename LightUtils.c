@@ -15,18 +15,26 @@ static volatile bool lightsActive = false;
 static volatile bool nightModeActive = false;
 static volatile bool takedownsActive = false;
 static volatile uint8_t currentBrightness = MAX_BRIGHTNESS;
+static volatile uint8_t thermalThrottlePercent = 100;
+static volatile bool overheatShutdown = false;
 
 uint16_t BrightnessToARR(uint8_t percentage) {
-    return (uint16_t)((uint32_t)percentage * 65535U / currentBrightness);
+    if (percentage > MAX_BRIGHTNESS) percentage = MAX_BRIGHTNESS;
+    return (uint16_t)((uint32_t)percentage * 65535U / MAX_BRIGHTNESS);
 }
 
 uint8_t ARRToBrightness(uint16_t arr) {
-    return (uint8_t)((uint32_t)arr * currentBrightness / 65535U);
+    return (uint8_t)((uint32_t)arr * MAX_BRIGHTNESS / 65535U);
 }
 
 void LightUtils_DriveGroup(const FlashGroup_t *group, const FlashStep_t *step) {
     // Apply inversion for digital output — NPN drivers are active-low
-    GPIO_PinState digital_state = (step->active ^ group->inverted) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    GPIO_PinState digital_state;
+    if (overheatShutdown) {
+        digital_state = (false ^ group->inverted) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    } else {
+        digital_state = (step->active ^ group->inverted) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    }
 
     // Drive digital outputs
     for (uint8_t i = 0; i < MAX_PATTERN_FLASH_GROUP_OUTPUTS; i++) {
@@ -36,12 +44,21 @@ void LightUtils_DriveGroup(const FlashGroup_t *group, const FlashStep_t *step) {
                           digital_state);
     }
 
+    // Calculate effective PWM duty cycle scaled by master brightness and thermal regulation
+    uint16_t effectiveIntensity = 0;
+    if (!overheatShutdown && step->intensity > 0) {
+        uint32_t scaled = (uint32_t)step->intensity * currentBrightness / MAX_BRIGHTNESS;
+        scaled = scaled * thermalThrottlePercent / 100U;
+        if (scaled > 65535U) scaled = 65535U;
+        effectiveIntensity = (uint16_t)scaled;
+    }
+
     // Drive PWM outputs (inversion not applied — PWM polarity is set in CubeMX)
     for (uint8_t i = 0; i < MAX_PATTERN_FLASH_GROUP_OUTPUTS; i++) {
         if (group->pwmOutputs[i].pwmTimer == NULL) break;
         __HAL_TIM_SET_COMPARE(group->pwmOutputs[i].pwmTimer,
                               group->pwmOutputs[i].pwmChannel,
-                              step->intensity);
+                              effectiveIntensity);
     }
 }
 
@@ -83,6 +100,22 @@ void LightUtils_SetBrightness(uint8_t brightness) {
     currentBrightness = brightness;
 }
 
+void LightUtils_SetThermalThrottle(uint8_t throttlePercent) {
+    thermalThrottlePercent = throttlePercent;
+}
+
+uint8_t LightUtils_GetThermalThrottle(void) {
+    return thermalThrottlePercent;
+}
+
+void LightUtils_SetOverheatShutdown(bool shutdown) {
+    overheatShutdown = shutdown;
+}
+
+bool LightUtils_GetOverheatShutdown(void) {
+    return overheatShutdown;
+}
+
 /**
  * @brief  Drive a group at 40 % brightness.
  *         Builds a temporary step with intensity pre-scaled and delegates
@@ -99,47 +132,48 @@ static void DriveGroupNightMode(const FlashGroup_t *group, const FlashStep_t *st
 }
 
 static bool prevNightMode = false;
-static uint32_t lastSend = 0;
 extern GlobalSyncHandle sync;
 
 void LightUtils_Run(void) {
     /* ---- Night mode pattern switch ---- */
-        if (nightModeActive != prevNightMode)
-        {
-            prevNightMode = nightModeActive;
-            GlobalSync_SetPattern(&sync, nightModeActive ? &nightPattern : &normalPattern);
-        }
+    if (nightModeActive != prevNightMode)
+    {
+        prevNightMode = nightModeActive;
+        GlobalSync_SetPattern(&sync, nightModeActive ? &nightPattern : &normalPattern);
+    }
 
-        /* ---- Drive outputs ---- */
-        if (lightsActive)
-        {
-            uint32_t ts = HAL_GetTick();
+    /* ---- Drive outputs ---- */
+    if (lightsActive && !overheatShutdown)
+    {
+        uint32_t ts = HAL_GetTick();
 
-            for (uint8_t g = 0; g < MAX_PATTERN_GROUPS; g++)
-            {
-                const FlashStep_t *step = GlobalSync_GetGroupStep(&sync, ts, g);
-                if (step == NULL)
-                    continue;
+        for (uint8_t g = 0; g < MAX_PATTERN_GROUPS; g++)
+        {
+            const FlashStep_t *step = GlobalSync_GetGroupStep(&sync, ts, g);
+            if (step == NULL)
+                continue;
 
-                if (nightModeActive)
-                    DriveGroupNightMode(&normalPattern.groups[g], step);
-                else
-                    LightUtils_DriveGroup(&normalPattern.groups[g], step);
-            }
+            if (nightModeActive)
+                DriveGroupNightMode(&normalPattern.groups[g], step);
+            else
+                LightUtils_DriveGroup(&normalPattern.groups[g], step);
         }
-        else
-        {
-            for (uint8_t g = 0; g < MAX_PATTERN_GROUPS; g++)
-                LightUtils_DriveGroupOff(&normalPattern.groups[g]);
-        }
+    }
+    else
+    {
+        for (uint8_t g = 0; g < MAX_PATTERN_GROUPS; g++)
+            LightUtils_DriveGroupOff(&normalPattern.groups[g]);
+    }
 
-        /* ---- Takedowns ---- */
-        if (takedownsActive)
-        {
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 65000);
-        }
-        else
-        {
-            __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 0);
-        }
+    /* ---- Takedowns ---- */
+    if (takedownsActive && !overheatShutdown)
+    {
+        uint32_t td = (uint32_t)65000U * currentBrightness / MAX_BRIGHTNESS * thermalThrottlePercent / 100U;
+        if (td > 65535U) td = 65535U;
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, (uint16_t)td);
+    }
+    else
+    {
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, 0);
+    }
 }
