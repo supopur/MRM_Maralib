@@ -12,7 +12,7 @@
 #include "stm32f1xx_it.h"
 #include "MaraLib/CANProtocol.h"
 #include "MaraLib/LightUtils.h"
-#include "../../Src/PatternStorage.h"
+#include "PatternStorage.h"
 
 // data for the bootloader
 #define NODEADDR_MAGIC  0x00C0FFEEUL
