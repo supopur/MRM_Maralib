@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 
+#ifdef HAL_UART_MODULE_ENABLED
 void UartUtils_Init(UartUtilsHandle *handle, UART_HandleTypeDef *huart)
 {
     if (handle == NULL) return;
@@ -70,3 +71,4 @@ void UartUtils_PrintHex(UartUtilsHandle *handle,
     }
     UartUtils_Print(handle, "\r\n");
 }
+#endif

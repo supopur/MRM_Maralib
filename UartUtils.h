@@ -39,6 +39,7 @@ extern "C" {
 #define UART_UTILS_TX_TIMEOUT_MS 10
 #endif
 
+#ifdef HAL_UART_MODULE_ENABLED
 typedef struct {
     UART_HandleTypeDef *huart;
 } UartUtilsHandle;
@@ -76,6 +77,17 @@ void UartUtils_PrintHex(UartUtilsHandle *handle,
                         const char *label,
                         const uint8_t *data,
                         uint8_t len);
+#else
+typedef struct {
+    void *huart;
+} UartUtilsHandle;
+
+#define UartUtils_Init(handle, huart) ((void)0)
+#define UartUtils_Print(handle, str) ((void)0)
+#define UartUtils_PrintLn(handle, str) ((void)0)
+#define UartUtils_Printf(handle, fmt, ...) ((void)0)
+#define UartUtils_PrintHex(handle, label, data, len) ((void)0)
+#endif
 
 #ifdef __cplusplus
 }
