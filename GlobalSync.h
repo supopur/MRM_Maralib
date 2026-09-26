@@ -11,25 +11,22 @@
 typedef struct {
     const Pattern_t *pattern;
 
-    ///@brief Per-group cumulative dwell (breakpoint) tables.
-    ///       Each group can have its own step timing, as long as every
-    ///       non-empty group's total dwell equals total_cycle (they must
-    ///       all complete one full cycle together to stay in sync).
-    uint16_t prefix[MAX_PATTERN_GROUPS][MAX_PATTERN_LENGTH + 1];
-    uint16_t total_cycle;
+    ///@brief Cumulative step duration breakpoint table
+    uint32_t prefix[MAX_PATTERN_STEPS + 1];
+    uint32_t total_cycle;
 
     uint32_t sync_timestamp;   ///< master's tick value at the moment of last sync
     uint32_t local_ref_tick;   ///< THIS node's own HAL_GetTick() at that same moment
     bool     is_synced;
 } GlobalSyncHandle;
 
+///@brief Initialize synchronization handle.
 void GlobalSync_Init(GlobalSyncHandle *handle);
 
-///@brief Load a pattern and build per-group breakpoint tables.
-///       Every group that defines at least one step (dwell != 0) must sum
-///       to the same total_cycle as the others, so all channels complete
-///       one loop together. Groups with no steps defined are treated as
-///       permanently off and are skipped during validation.
+///@brief Load a pattern and compute timing breakpoint table.
+///@param handle Pointer to sync handle.
+///@param pattern Pointer to pattern to play.
+///@retval true on success, false if invalid.
 bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern);
 
 ///@brief Record a sync point.
@@ -42,11 +39,19 @@ bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern);
 ///       compared against this node's own future HAL_GetTick() calls.
 void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint32_t master_timestamp, uint32_t local_timestamp);
 
-uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint32_t timestamp, uint8_t group_index);
-uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp, uint8_t group_index);
-uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp);
-const FlashStep_t *GlobalSync_GetGroupStep(const GlobalSyncHandle *handle,
-                                           uint32_t timestamp,
-                                           uint8_t  group_index);
+///@brief Get current active step index at timestamp.
+uint8_t GlobalSync_GetStepIndex(const GlobalSyncHandle *handle, uint32_t timestamp);
+
+///@brief Get active output channel bitmask at timestamp.
+uint32_t GlobalSync_GetActiveMask(const GlobalSyncHandle *handle, uint32_t timestamp);
+
+///@brief Get time remaining in current step in ms.
+uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp);
+
+///@brief Get current pattern phase in ms.
+uint32_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp);
+
+///@brief Get pointer to the currently active step.
+const PatternStep_t *GlobalSync_GetCurrentStep(const GlobalSyncHandle *handle, uint32_t timestamp);
 
 #endif // MAJAK_GLOBALSYNC_H

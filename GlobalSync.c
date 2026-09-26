@@ -19,11 +19,11 @@ static uint32_t compute_phase(const GlobalSyncHandle *handle, uint32_t timestamp
     return phase % handle->total_cycle;
 }
 
-static uint8_t phase_to_index(const GlobalSyncHandle *handle, uint32_t phase, uint8_t group_index) {
-    for (uint16_t i = 0; i < MAX_PATTERN_LENGTH; i++) {
-        if (handle->prefix[group_index][i + 1] == 0) break;
-        if (phase < handle->prefix[group_index][i + 1])
-            return (uint8_t)i;
+static uint8_t phase_to_index(const GlobalSyncHandle *handle, uint32_t phase) {
+    for (uint8_t i = 0; i < handle->pattern->step_count; i++) {
+        if (phase < handle->prefix[i + 1]) {
+            return i;
+        }
     }
     return 0;
 }
@@ -33,48 +33,26 @@ void GlobalSync_Init(GlobalSyncHandle *handle) {
 }
 
 bool GlobalSync_SetPattern(GlobalSyncHandle *handle, const Pattern_t *pattern) {
-    if (pattern == NULL)
+    if (pattern == NULL || pattern->step_count == 0 || pattern->step_count > MAX_PATTERN_STEPS) {
         return false;
+    }
 
     memset(handle->prefix, 0, sizeof(handle->prefix));
 
-    uint32_t cycle      = 0;
-    bool     have_cycle = false;
+    uint32_t accum = 0;
+    handle->prefix[0] = 0;
 
-    for (uint8_t g = 0; g < MAX_PATTERN_GROUPS; g++) {
-        const FlashGroup_t *grp = &pattern->groups[g];
-
-        uint32_t accum      = 0;
-        uint8_t  step_count = 0;
-
-        for (uint8_t i = 0; i < MAX_PATTERN_LENGTH; i++) {
-            if (grp->steps[i].dwell == 0) break;
-            accum += grp->steps[i].dwell;
-            if (accum > UINT16_MAX)
-                return false;
-            handle->prefix[g][i + 1] = (uint16_t)accum;
-            step_count = i + 1;
-        }
-
-        if (step_count == 0)
-            continue; // unused group (e.g. groups 2/3 when only 2 are wired) — stays permanently off
-
-        if (!have_cycle) {
-            cycle      = accum;
-            have_cycle = true;
-        } else if (accum != cycle) {
-            // Every active group must complete its pattern in exactly the
-            // same total time, otherwise groups drift out of phase with
-            // each other over successive cycles.
-            return false;
-        }
+    for (uint8_t i = 0; i < pattern->step_count; i++) {
+        accum += pattern->steps[i].duration_ms;
+        handle->prefix[i + 1] = accum;
     }
 
-    if (!have_cycle)
-        return false; // pattern defines no steps in any group
+    if (accum == 0) {
+        return false;
+    }
 
-    handle->pattern     = pattern;
-    handle->total_cycle = (uint16_t)cycle;
+    handle->pattern = pattern;
+    handle->total_cycle = accum;
     return true;
 }
 
@@ -84,41 +62,60 @@ void GlobalSync_SetSyncPoint(GlobalSyncHandle *handle, uint32_t master_timestamp
     handle->is_synced      = true;
 }
 
-uint8_t GlobalSync_GetIndex(const GlobalSyncHandle *handle, uint32_t timestamp, uint8_t group_index) {
-    if (!is_ready(handle))
+uint8_t GlobalSync_GetStepIndex(const GlobalSyncHandle *handle, uint32_t timestamp) {
+    if (!is_ready(handle)) {
         return 0xFF;
-    if (group_index >= MAX_PATTERN_GROUPS)
-        return 0xFF;
-    return phase_to_index(handle, compute_phase(handle, timestamp), group_index);
-}
+    }
 
-uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp, uint8_t group_index) {
-    if (!is_ready(handle))
-        return 0;
-    if (group_index >= MAX_PATTERN_GROUPS)
-        return 0;
+    // handle one-shot non-repeating pattern termination
+    if (!handle->pattern->repeat) {
+        uint32_t elapsed_local = timestamp - handle->local_ref_tick;
+        uint32_t total_elapsed = elapsed_local + handle->sync_timestamp;
+        if (total_elapsed >= handle->total_cycle) {
+            return 0xFF;
+        }
+    }
+
     uint32_t phase = compute_phase(handle, timestamp);
-    uint8_t  idx   = phase_to_index(handle, phase, group_index);
-    return handle->prefix[group_index][idx + 1] - (uint16_t)phase;
+    return phase_to_index(handle, phase);
 }
 
-uint16_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp) {
-    if (!is_ready(handle))
+uint32_t GlobalSync_GetActiveMask(const GlobalSyncHandle *handle, uint32_t timestamp) {
+    uint8_t idx = GlobalSync_GetStepIndex(handle, timestamp);
+    if (idx == 0xFF) {
         return 0;
-    return (uint16_t)compute_phase(handle, timestamp);
+    }
+    return handle->pattern->steps[idx].output_mask;
 }
 
-const FlashStep_t *GlobalSync_GetGroupStep(const GlobalSyncHandle *handle,
-                                           uint32_t timestamp,
-                                           uint8_t  group_index) {
-    if (!is_ready(handle))
-        return NULL;
-    if (group_index >= MAX_PATTERN_GROUPS)
-        return NULL;
+uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp) {
+    if (!is_ready(handle)) {
+        return 0;
+    }
 
-    uint8_t idx = GlobalSync_GetIndex(handle, timestamp, group_index);
-    if (idx == 0xFF)
-        return NULL;
+    uint8_t idx = GlobalSync_GetStepIndex(handle, timestamp);
+    if (idx == 0xFF) {
+        return 0;
+    }
 
-    return &handle->pattern->groups[group_index].steps[idx];
+    uint32_t phase = compute_phase(handle, timestamp);
+    if (handle->prefix[idx + 1] > phase) {
+        return (uint16_t)(handle->prefix[idx + 1] - phase);
+    }
+    return 0;
+}
+
+uint32_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp) {
+    if (!is_ready(handle)) {
+        return 0;
+    }
+    return compute_phase(handle, timestamp);
+}
+
+const PatternStep_t *GlobalSync_GetCurrentStep(const GlobalSyncHandle *handle, uint32_t timestamp) {
+    uint8_t idx = GlobalSync_GetStepIndex(handle, timestamp);
+    if (idx == 0xFF) {
+        return NULL;
+    }
+    return &handle->pattern->steps[idx];
 }

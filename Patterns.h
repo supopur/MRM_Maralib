@@ -8,44 +8,31 @@
 #include <stdbool.h>
 #include "GPIO.h"
 
-#define MAX_PATTERN_LENGTH              16
-#define MAX_PATTERN_GROUPS               4
+#define MAX_PATTERN_STEPS               32
+#define MAX_PATTERN_LENGTH              MAX_PATTERN_STEPS
 #define MAX_BRIGHTNESS                 100
-#define MAX_PATTERN_FLASH_GROUP_OUTPUTS 16
 
-///@brief A single step of a FlashGroup
+///@brief Single sequence step of an emergency lighting pattern
 typedef struct {
-    ///@brief Duration in ms
-    uint16_t dwell;
-    ///@brief Output state — ignored when intensity > 0
-    bool active;
-    ///@brief PWM duty cycle (0–65535); when > 0 overrides active
-    uint16_t intensity;
-} FlashStep_t;
+    ///@brief Duration of the step in milliseconds
+    uint16_t duration_ms;
+    ///@brief Bitmask of active channels during this step (Bit N enables Channel N)
+    uint32_t output_mask;
+} PatternStep_t;
 
-///@brief Pattern for one or more output pins / PWM channels
-///@note  When inverted = true the output is active-low:
-///         active=true  → GPIO LOW  (NPN driven, transistor on)
-///         active=false → GPIO HIGH (NPN off, output pulled high)
-///       The idle/off state (lights disabled) is also inverted automatically.
+///@brief Sequence definition for an emergency lighting pattern
 typedef struct {
-    FlashStep_t steps[MAX_PATTERN_LENGTH];
-
-    ///@brief Set true for active-low (NPN) outputs
-    bool inverted;
-
-    // GPIO outputs
-    digitalOutput_t digitalOutputs[MAX_PATTERN_FLASH_GROUP_OUTPUTS];
-
-    // PWM/Timer outputs
-    pwmOutput_t pwmOutputs[MAX_PATTERN_FLASH_GROUP_OUTPUTS];
-} FlashGroup_t;
-
-///@brief A collection of FlashGroups played simultaneously
-typedef struct {
-    FlashGroup_t groups[MAX_PATTERN_GROUPS];
+    ///@brief Arbitrary pattern identifier (0 to 255)
+    uint8_t pattern_id;
+    ///@brief Total number of sequence steps in this pattern
+    uint8_t step_count;
+    ///@brief Loop mode flag (true = continuous loop, false = one-shot sequence)
+    bool repeat;
+    ///@brief Steps array
+    PatternStep_t steps[MAX_PATTERN_STEPS];
 } Pattern_t;
 
 extern Pattern_t activePattern;
+extern uint8_t activePatternId;
 
 #endif // MAJAK_PATTERNS_H

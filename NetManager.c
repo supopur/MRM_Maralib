@@ -12,6 +12,7 @@
 #include "stm32f1xx_it.h"
 #include "MaraLib/CANProtocol.h"
 #include "MaraLib/LightUtils.h"
+#include "../../Src/PatternStorage.h"
 
 // data for the bootloader
 #define NODEADDR_MAGIC  0x00C0FFEEUL
@@ -51,13 +52,18 @@ void NetManager_SendCanByte(uint8_t subMsgID, uint8_t state) {
 
     uint8_t data[3] = {ourAddr, subMsgID, state};
 
-    if (NetManager_SendCanFrame(stdID, data, 3) != HAL_OK) {
-        HardFault_Handler();
-    }
+    NetManager_SendCanFrame(stdID, data, 3);
+}
+
+HAL_StatusTypeDef NetManager_SendSlaveOut(uint8_t subMsgID, uint8_t *payload, uint8_t length) {
+    uint16_t stdID = ((uint16_t) (CAN_PROTOCOL_SLAVE_OUT & 0x07) << 8) | CAN_MASTER_ADDR;
+    return NetManager_SendCanFrame(stdID, payload, length);
 }
 
 static uint8_t currentMessageStdID;
 static uint8_t currentPayload[8];
+static uint8_t writeActivePatternId = 0;
+static uint8_t writeActiveTarget = PATTERN_TARGET_RAM;
 
 //todo implement a lock/queue system
 void NetManager_AddMessage(const uint8_t messageId, uint8_t payload[8]) {
@@ -69,17 +75,11 @@ void NetManager_ProcessMessage() {
     // current_payload[0] is the sub message id
     switch (currentPayload[0]) {
         case CAN_PROTOCOL_GET_LIGHTS:
-            NetManager_SendCanByte(CAN_PROTOCOL_GET_LIGHTS, LightUtils_GetLights());
+            NetManager_SendCanByte(CAN_PROTOCOL_GET_LIGHTS, LightUtils_GetLightStatus());
             break;
         case CAN_PROTOCOL_SET_LIGHTS: {
             uint8_t status = currentPayload[1];
-            //last bit
-            bool lightsActive = status >> 7 & 1;
-            //6th bit
-            bool nightMode = status >> 6 & 1;
-
-            LightUtils_SetLights(lightsActive);
-            LightUtils_SetNightMode(nightMode);
+            LightUtils_SetLightStatus(status);
             break;
         }
         case CAN_PROTOCOL_SET_BRIGHTNESS: {
@@ -88,25 +88,112 @@ void NetManager_ProcessMessage() {
 
             if (brightness == 0 && targetType <= 100 && targetType != 0x00) {
                 // legacy format where payload[1] was brightness directly
-                LightUtils_SetBrightness(targetType);
-            } else if (targetType == 0x00 || targetType == 0xFF) {
-                LightUtils_SetBrightness(brightness);
+                LightUtils_SetBrightness(LIGHT_TYPE_ALL, targetType);
+            } else {
+                LightUtils_SetBrightness(targetType, brightness);
             }
             break;
         }
-        case CAN_PROTOCOL_GET_TAKEDOWNS:
-            NetManager_SendCanByte(CAN_PROTOCOL_GET_TAKEDOWNS, LightUtils_GetTakedowns());
+        case CAN_PROTOCOL_GET_BRIGHTNESS: {
+            uint8_t targetType = currentPayload[1];
+            uint8_t b = LightUtils_GetBrightness(targetType);
+            uint8_t resp[3] = {ourAddr, CAN_PROTOCOL_GET_BRIGHTNESS, b};
+            NetManager_SendSlaveOut(CAN_PROTOCOL_GET_BRIGHTNESS, resp, 3);
             break;
-        case CAN_PROTOCOL_SET_TAKEDOWNS:
-            if ((currentPayload[1] & TAKEDOWNS_BIT_MASK) != 0) {
-                LightUtils_SetTakedowns(currentPayload[2] != 0);
+        }
+        case CAN_PROTOCOL_GET_TAKEDOWNS: {
+            uint8_t resp[3] = {ourAddr, CAN_PROTOCOL_GET_TAKEDOWNS, (uint8_t)LightUtils_GetTakedownMask()};
+            NetManager_SendSlaveOut(CAN_PROTOCOL_GET_TAKEDOWNS, resp, 3);
+            break;
+        }
+        case CAN_PROTOCOL_SET_TAKEDOWNS: {
+            uint8_t level = currentPayload[1];
+            uint8_t mask = currentPayload[2];
+            if (level == 0) {
+                LightUtils_SetTakedownsWithMask(false, 0);
+            } else {
+                LightUtils_SetTakedownsWithMask(true, mask == 0 ? 0xFFFFFFFF : (uint32_t)mask);
+                if (level > 1 && level <= 100) {
+                    LightUtils_SetBrightness(LIGHT_TYPE_TAKEDOWNS, level);
+                }
             }
             break;
+        }
+        case CAN_PROTOCOL_GET_PATTERN: {
+            uint8_t activeId = LightUtils_GetActivePatternId();
+            NetManager_SendCanByte(CAN_PROTOCOL_GET_PATTERN, activeId);
+            break;
+        }
+        case CAN_PROTOCOL_SET_PATTERN: {
+            uint8_t patternId = currentPayload[1];
+            PatternStorage_ActivatePattern(patternId);
+            break;
+        }
+        case CAN_PROTOCOL_WRITE_PATTERN: {
+            uint8_t cmd = currentPayload[1];
+            if (cmd == PATTERN_CMD_HEADER) {
+                writeActivePatternId = currentPayload[2];
+                uint8_t stepCount = currentPayload[3];
+                bool repeat = currentPayload[4] != 0;
+                writeActiveTarget = currentPayload[5];
+                PatternStorage_WriteHeader(writeActivePatternId, stepCount, repeat, writeActiveTarget);
+            } else if (cmd == PATTERN_CMD_COMMIT) {
+                PatternStorage_CommitToFlash();
+            }
+            break;
+        }
+        case CAN_PROTOCOL_WRITE_PATTERN_STEP: {
+            uint8_t stepIdx = currentPayload[1];
+            uint16_t dur = ((uint16_t)currentPayload[2] << 8) | currentPayload[3];
+            uint32_t mask = ((uint32_t)currentPayload[4] << 24) |
+                            ((uint32_t)currentPayload[5] << 16) |
+                            ((uint32_t)currentPayload[6] << 8)  |
+                            (uint32_t)currentPayload[7];
+            PatternStorage_WriteStep(writeActivePatternId, stepIdx, dur, mask, writeActiveTarget);
+            break;
+        }
+        case CAN_PROTOCOL_READ_PATTERN: {
+            uint8_t patternId = currentPayload[1];
+            uint8_t target = currentPayload[2];
+            uint8_t stepIdx = currentPayload[3];
+
+            const Pattern_t *p = (target == PATTERN_TARGET_FLASH)
+                                 ? PatternStorage_GetFlashPattern(patternId)
+                                 : PatternStorage_GetPattern(patternId);
+
+            if (p != NULL) {
+                if (stepIdx == 0xFF) {
+                    uint8_t resp[6] = {
+                        ourAddr,
+                        CAN_PROTOCOL_READ_PATTERN,
+                        patternId,
+                        p->step_count,
+                        (uint8_t)(p->repeat ? 1 : 0),
+                        target
+                    };
+                    NetManager_SendSlaveOut(CAN_PROTOCOL_READ_PATTERN, resp, 6);
+                } else if (stepIdx < p->step_count) {
+                    uint8_t resp[8] = {
+                        ourAddr,
+                        stepIdx,
+                        (uint8_t)((p->steps[stepIdx].duration_ms >> 8) & 0xFF),
+                        (uint8_t)(p->steps[stepIdx].duration_ms & 0xFF),
+                        (uint8_t)((p->steps[stepIdx].output_mask >> 24) & 0xFF),
+                        (uint8_t)((p->steps[stepIdx].output_mask >> 16) & 0xFF),
+                        (uint8_t)((p->steps[stepIdx].output_mask >> 8) & 0xFF),
+                        (uint8_t)(p->steps[stepIdx].output_mask & 0xFF)
+                    };
+                    NetManager_SendSlaveOut(CAN_PROTOCOL_READ_PATTERN, resp, 8);
+                }
+            }
+            break;
+        }
         case CAN_PROTOCOL_ENTER_BOOT:
             *MAGIC_ADDR = MAGIC_VAL;
             *NODEADDR_ADDR = ((uint32_t)NODEADDR_MAGIC << BOOT_NODE_SHIFT) | (uint32_t)ourAddr;
             __DSB();
             NVIC_SystemReset();
+            break;
     }
 }
 

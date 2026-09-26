@@ -6,3 +6,4 @@
 #include "stm32f1xx_hal.h"
 
 Pattern_t activePattern = {};
+uint8_t activePatternId = 0;
