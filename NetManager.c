@@ -107,15 +107,11 @@ void NetManager_ProcessMessage() {
             break;
         }
         case CAN_PROTOCOL_SET_TAKEDOWNS: {
-            uint8_t level = currentPayload[1];
-            uint8_t mask = currentPayload[2];
-            if (level == 0) {
+            uint8_t mask = currentPayload[1];
+            if (mask == 0) {
                 LightUtils_SetTakedownsWithMask(false, 0);
             } else {
-                LightUtils_SetTakedownsWithMask(true, mask == 0 ? 0xFFFFFFFF : (uint32_t)mask);
-                if (level > 1 && level <= 100) {
-                    LightUtils_SetBrightness(LIGHT_TYPE_TAKEDOWNS, level);
-                }
+                LightUtils_SetTakedownsWithMask(true, (uint32_t)mask);
             }
             break;
         }
