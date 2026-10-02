@@ -255,6 +255,9 @@ void NetManager_ProcessDHCPMessage() {
 
         // store the address for the bootloader in case we need to reboot into it
         *NODEADDR_ADDR = ((uint32_t)NODEADDR_MAGIC << BOOT_NODE_SHIFT) | (uint32_t)ourAddr;
+
+        // Once we have an address, configure hardware CAN filters to only listen to 0xFF, 0xFE, and ourAddr
+        CAN_ConfigAddressFilters(ourAddr);
     }
 }
 

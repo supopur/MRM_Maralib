@@ -25,6 +25,7 @@ static volatile bool overheatShutdown = false;
 
 typedef struct {
     uint8_t channel_id;
+    uint8_t takedown_id;
     ChannelDriverType_t driver_type;
     uint8_t light_type;
     bool active_high;
@@ -42,10 +43,11 @@ void LightUtils_ClearChannels(void) {
     registeredChannelCount = 0;
 }
 
-void LightUtils_RegisterPwmChannel(uint8_t channel_id, uint8_t light_type, TIM_HandleTypeDef *timer, uint32_t tim_channel) {
+void LightUtils_RegisterPwmChannelEx(uint8_t flash_channel_id, uint8_t takedown_id, uint8_t light_type, TIM_HandleTypeDef *timer, uint32_t tim_channel) {
     if (registeredChannelCount >= MAX_LIGHT_CHANNELS) return;
     LightChannel_t *ch = &registeredChannels[registeredChannelCount++];
-    ch->channel_id = channel_id;
+    ch->channel_id = flash_channel_id;
+    ch->takedown_id = takedown_id;
     ch->driver_type = CHANNEL_OUTPUT_PWM;
     ch->light_type = light_type;
     ch->active_high = true;
@@ -53,15 +55,24 @@ void LightUtils_RegisterPwmChannel(uint8_t channel_id, uint8_t light_type, TIM_H
     ch->pwm_channel = tim_channel;
 }
 
-void LightUtils_RegisterGpioChannel(uint8_t channel_id, uint8_t light_type, GPIO_TypeDef *port, uint16_t pin, bool active_high) {
+void LightUtils_RegisterPwmChannel(uint8_t channel_id, uint8_t light_type, TIM_HandleTypeDef *timer, uint32_t tim_channel) {
+    LightUtils_RegisterPwmChannelEx(channel_id, channel_id, light_type, timer, tim_channel);
+}
+
+void LightUtils_RegisterGpioChannelEx(uint8_t flash_channel_id, uint8_t takedown_id, uint8_t light_type, GPIO_TypeDef *port, uint16_t pin, bool active_high) {
     if (registeredChannelCount >= MAX_LIGHT_CHANNELS) return;
     LightChannel_t *ch = &registeredChannels[registeredChannelCount++];
-    ch->channel_id = channel_id;
+    ch->channel_id = flash_channel_id;
+    ch->takedown_id = takedown_id;
     ch->driver_type = CHANNEL_OUTPUT_GPIO;
     ch->light_type = light_type;
     ch->active_high = active_high;
     ch->gpio_port = port;
     ch->gpio_pin = pin;
+}
+
+void LightUtils_RegisterGpioChannel(uint8_t channel_id, uint8_t light_type, GPIO_TypeDef *port, uint16_t pin, bool active_high) {
+    LightUtils_RegisterGpioChannelEx(channel_id, channel_id, light_type, port, pin, active_high);
 }
 
 uint16_t BrightnessToARR(uint8_t percentage) {
@@ -198,8 +209,8 @@ void LightUtils_Run(void) {
 
     bool isTakedownOn = takedownsActive && (takedownMask != 0) && !overheatShutdown;
 
-    // takedowns override emergency lights: emergency lights are suppressed while takedowns are active
-    bool runEmergencyLights = lightsActive && !isTakedownOn && !overheatShutdown;
+    // Emergency lights run when flashing is active and not in overheat shutdown
+    bool runEmergencyLights = lightsActive && !overheatShutdown;
 
     uint32_t activeMask = 0;
     if (runEmergencyLights) {
@@ -252,13 +263,18 @@ void LightUtils_Run(void) {
             intensity = 0;
             isChannelActive = false;
         } else if (ch->light_type == LIGHT_TYPE_TAKEDOWNS) {
-            // takedown channels are independently driven by their takedown channel id bit
-            if (isTakedownOn && ((takedownMask & (1UL << ch->channel_id)) != 0)) {
+            // Steady takedown mode takes highest priority for takedown channels
+            if (isTakedownOn && ((takedownMask & (1UL << ch->takedown_id)) != 0)) {
+                isChannelActive = true;
+                intensity = effTakedown;
+            }
+            // If steady takedown is not active on this channel, allow flash patterns to flash it
+            else if (runEmergencyLights && ((activeMask & (1UL << ch->channel_id)) != 0)) {
                 isChannelActive = true;
                 intensity = effTakedown;
             }
         } else {
-            // emergency warning light channel: suppressed when takedowns are on
+            // Standard emergency warning light channels
             if (runEmergencyLights) {
                 if ((activeMask & (1UL << ch->channel_id)) != 0) {
                     isChannelActive = true;
@@ -267,7 +283,7 @@ void LightUtils_Run(void) {
                     isCruise = true;
                     intensity = effCruise;
                 }
-            } else if (!isTakedownOn && cruiseModeActive) {
+            } else if (cruiseModeActive) {
                 isCruise = true;
                 intensity = effCruise;
             }

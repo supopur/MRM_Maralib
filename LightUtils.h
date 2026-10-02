@@ -26,6 +26,11 @@ typedef enum {
 ///@param tim_channel Timer channel (e.g. TIM_CHANNEL_1).
 void LightUtils_RegisterPwmChannel(uint8_t channel_id, uint8_t light_type, TIM_HandleTypeDef *timer, uint32_t tim_channel);
 
+///@brief Register a PWM-driven output channel with separate flash channel and takedown indices.
+///@param flash_channel_id Bit in pattern output_mask.
+///@param takedown_id Bit in takedownMask for steady takedowns.
+void LightUtils_RegisterPwmChannelEx(uint8_t flash_channel_id, uint8_t takedown_id, uint8_t light_type, TIM_HandleTypeDef *timer, uint32_t tim_channel);
+
 ///@brief Register a GPIO-driven output channel.
 ///@param channel_id Logical channel index (0 to 31) matching bit in output_mask.
 ///@param light_type LIGHT_TYPE_EMERGENCY or LIGHT_TYPE_TAKEDOWNS.
@@ -33,6 +38,11 @@ void LightUtils_RegisterPwmChannel(uint8_t channel_id, uint8_t light_type, TIM_H
 ///@param pin Pin mask.
 ///@param active_high Polarity (true = active high, false = active low).
 void LightUtils_RegisterGpioChannel(uint8_t channel_id, uint8_t light_type, GPIO_TypeDef *port, uint16_t pin, bool active_high);
+
+///@brief Register a GPIO-driven output channel with separate flash channel and takedown indices.
+///@param flash_channel_id Bit in pattern output_mask.
+///@param takedown_id Bit in takedownMask for steady takedowns.
+void LightUtils_RegisterGpioChannelEx(uint8_t flash_channel_id, uint8_t takedown_id, uint8_t light_type, GPIO_TypeDef *port, uint16_t pin, bool active_high);
 
 ///@brief Clear all registered channel mappings.
 void LightUtils_ClearChannels(void);
