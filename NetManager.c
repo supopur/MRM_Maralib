@@ -184,6 +184,13 @@ void NetManager_ProcessMessage() {
             }
             break;
         }
+        case CAN_PROTOCOL_TOGGLE_CALM: {
+            uint16_t length_ms = ((uint16_t)currentPayload[1] << 8) | (uint16_t)currentPayload[2];
+            calm_phase_t phase_offset = (calm_phase_t)currentPayload[3];
+            uint8_t channel_id = currentPayload[4];
+            LightUtils_ToggleCalm(channel_id, length_ms, phase_offset);
+            break;
+        }
         case CAN_PROTOCOL_ENTER_BOOT:
             *MAGIC_ADDR = MAGIC_VAL;
             *NODEADDR_ADDR = ((uint32_t)NODEADDR_MAGIC << BOOT_NODE_SHIFT) | (uint32_t)ourAddr;

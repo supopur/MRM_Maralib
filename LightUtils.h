@@ -120,4 +120,30 @@ void LightUtils_SetActivePatternId(uint8_t id);
 
 ///@brief Main periodic light controller task.
 void LightUtils_Run(void);
+
+typedef uint8_t calm_phase_t;
+
+#define CALM_PHASE_STEPS ((uint32_t)1U << (sizeof(calm_phase_t) * 8U))
+
+typedef struct {
+    bool enabled;
+    uint16_t length_ms;
+    calm_phase_t phase_offset;
+} CalmChannelState_t;
+
+///@brief Toggle calm (Whelen DVI sine) mode on an emergency channel.
+///@param channel_id Logical emergency channel ID (0 to MAX_LIGHT_CHANNELS - 1).
+///@param length_ms Cycle period in ms. 0 turns calm off.
+///@param phase_offset Phase offset as a binary angle (0 to CALM_PHASE_STEPS - 1).
+void LightUtils_ToggleCalm(uint8_t channel_id, uint16_t length_ms, calm_phase_t phase_offset);
+
+///@brief Explicitly set calm mode state on an emergency channel.
+void LightUtils_SetCalm(uint8_t channel_id, bool enable, uint16_t length_ms, calm_phase_t phase_offset);
+
+///@brief Check if calm mode is active on an emergency channel.
+bool LightUtils_IsCalm(uint8_t channel_id);
+
+///@brief Clear calm mode on all channels.
+void LightUtils_ClearAllCalm(void);
+
 #endif // MAJAK_LIGHTUTILS_H

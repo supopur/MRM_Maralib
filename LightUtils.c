@@ -6,6 +6,7 @@
 
 #include <string.h>
 #include "GlobalSync.h"
+#include "CalmLut.h"
 #include "MaraLib/CANProtocol.h"
 
 #define CRUISE_MODE_PERCENT 5
@@ -23,6 +24,8 @@ static volatile uint8_t nightBrightness = 40;
 static volatile uint8_t thermalThrottlePercent = 100;
 static volatile bool overheatShutdown = false;
 
+static CalmChannelState_t calmChannels[MAX_LIGHT_CHANNELS];
+
 typedef struct {
     uint8_t channel_id;
     uint8_t takedown_id;
@@ -38,9 +41,14 @@ typedef struct {
 static LightChannel_t registeredChannels[MAX_LIGHT_CHANNELS];
 static uint8_t registeredChannelCount = 0;
 
+void LightUtils_ClearAllCalm(void) {
+    memset(calmChannels, 0, sizeof(calmChannels));
+}
+
 void LightUtils_ClearChannels(void) {
     memset(registeredChannels, 0, sizeof(registeredChannels));
     registeredChannelCount = 0;
+    LightUtils_ClearAllCalm();
 }
 
 void LightUtils_RegisterPwmChannelEx(uint8_t flash_channel_id, uint8_t takedown_id, uint8_t light_type, TIM_HandleTypeDef *timer, uint32_t tim_channel) {
@@ -202,6 +210,40 @@ void LightUtils_SetActivePatternId(uint8_t id) {
     activePatternId = id;
 }
 
+void LightUtils_SetCalm(uint8_t channel_id, bool enable, uint16_t length_ms, calm_phase_t phase_offset) {
+    if (channel_id >= MAX_LIGHT_CHANNELS) return;
+    calmChannels[channel_id].enabled = enable && (length_ms > 0);
+    calmChannels[channel_id].length_ms = length_ms;
+    calmChannels[channel_id].phase_offset = phase_offset;
+}
+
+void LightUtils_ToggleCalm(uint8_t channel_id, uint16_t length_ms, calm_phase_t phase_offset) {
+    if (channel_id >= MAX_LIGHT_CHANNELS) return;
+    if (length_ms == 0) {
+        calmChannels[channel_id].enabled = false;
+        return;
+    }
+
+    if (calmChannels[channel_id].enabled) {
+        if (calmChannels[channel_id].length_ms == length_ms &&
+            calmChannels[channel_id].phase_offset == phase_offset) {
+            calmChannels[channel_id].enabled = false;
+        } else {
+            calmChannels[channel_id].length_ms = length_ms;
+            calmChannels[channel_id].phase_offset = phase_offset;
+        }
+    } else {
+        calmChannels[channel_id].enabled = true;
+        calmChannels[channel_id].length_ms = length_ms;
+        calmChannels[channel_id].phase_offset = phase_offset;
+    }
+}
+
+bool LightUtils_IsCalm(uint8_t channel_id) {
+    if (channel_id >= MAX_LIGHT_CHANNELS) return false;
+    return calmChannels[channel_id].enabled;
+}
+
 extern GlobalSyncHandle sync;
 
 void LightUtils_Run(void) {
@@ -262,14 +304,33 @@ void LightUtils_Run(void) {
         if (overheatShutdown) {
             intensity = 0;
             isChannelActive = false;
-        } else if (ch->light_type == LIGHT_TYPE_TAKEDOWNS) {
+        } else if (ch->light_type == LIGHT_TYPE_TAKEDOWNS && isTakedownOn && ((takedownMask & (1UL << ch->takedown_id)) != 0)) {
             // Steady takedown mode takes highest priority for takedown channels
-            if (isTakedownOn && ((takedownMask & (1UL << ch->takedown_id)) != 0)) {
-                isChannelActive = true;
-                intensity = effTakedown;
+            isChannelActive = true;
+            intensity = effTakedown;
+        } else if (ch->channel_id < MAX_LIGHT_CHANNELS && calmChannels[ch->channel_id].enabled && calmChannels[ch->channel_id].length_ms > 0) {
+            // Calm mode (Whelen DVI sine wave) on emergency channel
+            uint16_t len = calmChannels[ch->channel_id].length_ms;
+            calm_phase_t phase_off = calmChannels[ch->channel_id].phase_offset;
+
+            uint32_t t_sync = ts;
+            if (sync.is_synced) {
+                t_sync = (ts - sync.local_ref_tick) + sync.sync_timestamp;
             }
+
+            uint32_t offset_ms = ((uint32_t)phase_off * (uint32_t)len) / CALM_PHASE_STEPS;
+            uint32_t t_cycle = (t_sync + offset_ms) % (uint32_t)len;
+            uint32_t lut_index = (t_cycle * CALM_LUT_SIZE) / (uint32_t)len;
+            if (lut_index >= CALM_LUT_SIZE) {
+                lut_index = CALM_LUT_SIZE - 1U;
+            }
+
+            uint16_t lut_val = CALM_SINE_LUT[lut_index];
+            intensity = ((uint32_t)lut_val * effEmergency) / CALM_LUT_MAX_VALUE;
+            isChannelActive = (intensity > 0);
+        } else if (ch->light_type == LIGHT_TYPE_TAKEDOWNS) {
             // If steady takedown is not active on this channel, allow flash patterns to flash it
-            else if (runEmergencyLights && ((activeMask & (1UL << ch->channel_id)) != 0)) {
+            if (runEmergencyLights && ((activeMask & (1UL << ch->channel_id)) != 0)) {
                 isChannelActive = true;
                 intensity = effTakedown;
             }
