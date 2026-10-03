@@ -98,6 +98,9 @@ bool LightUtils_GetLights(void) {
 
 void LightUtils_SetLights(bool status) {
     lightsActive = status;
+    if (status) {
+        LightUtils_ClearAllCalm();
+    }
 }
 
 bool LightUtils_GetNightMode(void) {
@@ -128,6 +131,9 @@ void LightUtils_SetLightStatus(uint8_t statusBitmask) {
     lightsActive = (statusBitmask & LIGHT_FLAG_FLASHING) != 0;
     nightModeActive = (statusBitmask & LIGHT_FLAG_NIGHT) != 0;
     cruiseModeActive = (statusBitmask & LIGHT_FLAG_CRUISE) != 0;
+    if (lightsActive) {
+        LightUtils_ClearAllCalm();
+    }
 }
 
 bool LightUtils_GetTakedowns(void) {
@@ -137,11 +143,17 @@ bool LightUtils_GetTakedowns(void) {
 void LightUtils_SetTakedowns(bool status) {
     takedownsActive = status;
     takedownMask = status ? 0xFFFFFFFF : 0;
+    if (status) {
+        LightUtils_ClearAllCalm();
+    }
 }
 
 void LightUtils_SetTakedownsWithMask(bool status, uint32_t mask) {
     takedownsActive = status;
     takedownMask = status ? (mask == 0 ? 0xFFFFFFFF : mask) : 0;
+    if (status && takedownMask != 0) {
+        LightUtils_ClearAllCalm();
+    }
 }
 
 uint32_t LightUtils_GetTakedownMask(void) {
@@ -212,6 +224,7 @@ void LightUtils_SetActivePatternId(uint8_t id) {
 
 void LightUtils_SetCalm(uint8_t channel_id, bool enable, uint16_t length_ms, calm_phase_t phase_offset) {
     if (channel_id >= MAX_LIGHT_CHANNELS) return;
+    if (lightsActive || (takedownsActive && takedownMask != 0)) return;
     calmChannels[channel_id].enabled = enable && (length_ms > 0);
     calmChannels[channel_id].length_ms = length_ms;
     calmChannels[channel_id].phase_offset = phase_offset;
@@ -219,7 +232,7 @@ void LightUtils_SetCalm(uint8_t channel_id, bool enable, uint16_t length_ms, cal
 
 void LightUtils_ToggleCalm(uint8_t channel_id, uint16_t length_ms, calm_phase_t phase_offset) {
     if (channel_id >= MAX_LIGHT_CHANNELS) return;
-    if (length_ms == 0) {
+    if (length_ms == 0 || lightsActive || (takedownsActive && takedownMask != 0)) {
         calmChannels[channel_id].enabled = false;
         return;
     }
@@ -253,6 +266,11 @@ void LightUtils_Run(void) {
 
     // Emergency lights run when flashing is active and not in overheat shutdown
     bool runEmergencyLights = lightsActive && !overheatShutdown;
+
+    // Emergency lights or takedowns turn off calm immediately and permanently until re-toggled
+    if (runEmergencyLights || isTakedownOn) {
+        LightUtils_ClearAllCalm();
+    }
 
     uint32_t activeMask = 0;
     if (runEmergencyLights) {
