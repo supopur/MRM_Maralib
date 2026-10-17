@@ -8,6 +8,7 @@
 #include "GlobalSync.h"
 #include "CalmLut.h"
 #include "MaraLib/CANProtocol.h"
+#include "SoftPWM.h"
 
 #define CRUISE_MODE_PERCENT 5
 
@@ -36,6 +37,7 @@ typedef struct {
     uint32_t pwm_channel;
     GPIO_TypeDef *gpio_port;
     uint16_t gpio_pin;
+    uint8_t soft_pwm_index;
 } LightChannel_t;
 
 static LightChannel_t registeredChannels[MAX_LIGHT_CHANNELS];
@@ -81,6 +83,20 @@ void LightUtils_RegisterGpioChannelEx(uint8_t flash_channel_id, uint8_t takedown
 
 void LightUtils_RegisterGpioChannel(uint8_t channel_id, uint8_t light_type, GPIO_TypeDef *port, uint16_t pin, bool active_high) {
     LightUtils_RegisterGpioChannelEx(channel_id, channel_id, light_type, port, pin, active_high);
+}
+
+void LightUtils_RegisterSoftPwmChannelEx(uint8_t flash_channel_id, uint8_t takedown_id, uint8_t light_type, uint8_t soft_pwm_index) {
+    if (registeredChannelCount >= MAX_LIGHT_CHANNELS) return;
+    LightChannel_t *ch = &registeredChannels[registeredChannelCount++];
+    ch->channel_id = flash_channel_id;
+    ch->takedown_id = takedown_id;
+    ch->driver_type = CHANNEL_OUTPUT_SOFT_PWM;
+    ch->light_type = light_type;
+    ch->soft_pwm_index = soft_pwm_index;
+}
+
+void LightUtils_RegisterSoftPwmChannel(uint8_t channel_id, uint8_t light_type, uint8_t soft_pwm_index) {
+    LightUtils_RegisterSoftPwmChannelEx(channel_id, channel_id, light_type, soft_pwm_index);
 }
 
 uint16_t BrightnessToARR(uint8_t percentage) {
@@ -372,6 +388,8 @@ void LightUtils_Run(void) {
             if (ch->pwm_timer != NULL) {
                 __HAL_TIM_SET_COMPARE(ch->pwm_timer, ch->pwm_channel, (uint16_t)intensity);
             }
+        } else if (ch->driver_type == CHANNEL_OUTPUT_SOFT_PWM) {
+            SoftPWM_SetDuty16(ch->soft_pwm_index, (uint16_t)intensity);
         } else if (ch->driver_type == CHANNEL_OUTPUT_GPIO) {
             if (ch->gpio_port != NULL) {
                 bool pinActive = isChannelActive || isCruise;

@@ -16,7 +16,8 @@
 typedef enum {
     CHANNEL_OUTPUT_NONE = 0,
     CHANNEL_OUTPUT_PWM,
-    CHANNEL_OUTPUT_GPIO
+    CHANNEL_OUTPUT_GPIO,
+    CHANNEL_OUTPUT_SOFT_PWM
 } ChannelDriverType_t;
 
 ///@brief Register a PWM-driven output channel.
@@ -43,6 +44,12 @@ void LightUtils_RegisterGpioChannel(uint8_t channel_id, uint8_t light_type, GPIO
 ///@param flash_channel_id Bit in pattern output_mask.
 ///@param takedown_id Bit in takedownMask for steady takedowns.
 void LightUtils_RegisterGpioChannelEx(uint8_t flash_channel_id, uint8_t takedown_id, uint8_t light_type, GPIO_TypeDef *port, uint16_t pin, bool active_high);
+
+///@brief Register a bit-banged software PWM output channel.
+void LightUtils_RegisterSoftPwmChannel(uint8_t channel_id, uint8_t light_type, uint8_t soft_pwm_index);
+
+///@brief Register a bit-banged software PWM output channel with separate flash and takedown IDs.
+void LightUtils_RegisterSoftPwmChannelEx(uint8_t flash_channel_id, uint8_t takedown_id, uint8_t light_type, uint8_t soft_pwm_index);
 
 ///@brief Clear all registered channel mappings.
 void LightUtils_ClearChannels(void);
