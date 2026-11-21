@@ -12,7 +12,15 @@
 #include "stm32f1xx_it.h"
 #include "MaraLib/CANProtocol.h"
 #include "MaraLib/LightUtils.h"
-#include "PatternStorage.h"
+#if defined(__has_include)
+  #if __has_include("PatternStorage.h")
+    #define MARALIB_HAS_PATTERN_STORAGE 1
+    #include "PatternStorage.h"
+  #endif
+#endif
+#ifndef MARALIB_HAS_PATTERN_STORAGE
+  #define MARALIB_HAS_PATTERN_STORAGE 0
+#endif
 
 // data for the bootloader
 #define NODEADDR_MAGIC  0x00C0FFEEUL
@@ -120,6 +128,7 @@ void NetManager_ProcessMessage() {
             NetManager_SendCanByte(CAN_PROTOCOL_GET_PATTERN, activeId);
             break;
         }
+#if MARALIB_HAS_PATTERN_STORAGE
         case CAN_PROTOCOL_SET_PATTERN: {
             uint8_t patternId = currentPayload[1];
             PatternStorage_ActivatePattern(patternId);
@@ -140,12 +149,18 @@ void NetManager_ProcessMessage() {
         }
         case CAN_PROTOCOL_WRITE_PATTERN_STEP: {
             uint8_t stepIdx = currentPayload[1];
-            uint16_t dur = ((uint16_t)currentPayload[2] << 8) | currentPayload[3];
-            uint32_t mask = ((uint32_t)currentPayload[4] << 24) |
-                            ((uint32_t)currentPayload[5] << 16) |
-                            ((uint32_t)currentPayload[6] << 8)  |
-                            (uint32_t)currentPayload[7];
-            PatternStorage_WriteStep(writeActivePatternId, stepIdx, dur, mask, writeActiveTarget);
+            uint8_t channelId = currentPayload[2];
+            if (channelId == 0xFF) {
+                // Step duration
+                uint16_t dur = ((uint16_t)currentPayload[3] << 8) | currentPayload[4];
+                PatternStorage_WriteStepDuration(writeActivePatternId, stepIdx, dur, writeActiveTarget);
+            } else if (channelId < MAX_PATTERN_CHANNELS) {
+                // Keyframe coordinate (step, channel)
+                uint8_t brightness = currentPayload[3];
+                uint16_t fadeIn = ((uint16_t)currentPayload[4] << 8) | currentPayload[5];
+                uint16_t fadeOut = ((uint16_t)currentPayload[6] << 8) | currentPayload[7];
+                PatternStorage_WriteKeyframe(writeActivePatternId, stepIdx, channelId, brightness, fadeIn, fadeOut, writeActiveTarget);
+            }
             break;
         }
         case CAN_PROTOCOL_READ_PATTERN: {
@@ -169,28 +184,40 @@ void NetManager_ProcessMessage() {
                     };
                     NetManager_SendSlaveOut(CAN_PROTOCOL_READ_PATTERN, resp, 6);
                 } else if (stepIdx < p->step_count) {
-                    uint8_t resp[8] = {
-                        ourAddr,
-                        stepIdx,
-                        (uint8_t)((p->steps[stepIdx].duration_ms >> 8) & 0xFF),
-                        (uint8_t)(p->steps[stepIdx].duration_ms & 0xFF),
-                        (uint8_t)((p->steps[stepIdx].output_mask >> 24) & 0xFF),
-                        (uint8_t)((p->steps[stepIdx].output_mask >> 16) & 0xFF),
-                        (uint8_t)((p->steps[stepIdx].output_mask >> 8) & 0xFF),
-                        (uint8_t)(p->steps[stepIdx].output_mask & 0xFF)
-                    };
-                    NetManager_SendSlaveOut(CAN_PROTOCOL_READ_PATTERN, resp, 8);
+                    uint8_t channelId = currentPayload[4];
+                    if (channelId == 0xFF) {
+                        uint8_t resp[8] = {
+                            ourAddr,
+                            stepIdx,
+                            0xFF,
+                            (uint8_t)((p->steps[stepIdx].duration_ms >> 8) & 0xFF),
+                            (uint8_t)(p->steps[stepIdx].duration_ms & 0xFF),
+                            0,
+                            0,
+                            0
+                        };
+                        NetManager_SendSlaveOut(CAN_PROTOCOL_READ_PATTERN, resp, 8);
+                    } else if (channelId < MAX_PATTERN_CHANNELS) {
+                        const ChannelKeyframe_t *kf = &p->steps[stepIdx].channels[channelId];
+                        uint16_t fadeIn = FADE_UNITS_TO_MS(kf->fade_in_units);
+                        uint16_t fadeOut = FADE_UNITS_TO_MS(kf->fade_out_units);
+                        uint8_t resp[8] = {
+                            ourAddr,
+                            stepIdx,
+                            channelId,
+                            kf->brightness,
+                            (uint8_t)((fadeIn >> 8) & 0xFF),
+                            (uint8_t)(fadeIn & 0xFF),
+                            (uint8_t)((fadeOut >> 8) & 0xFF),
+                            (uint8_t)(fadeOut & 0xFF)
+                        };
+                        NetManager_SendSlaveOut(CAN_PROTOCOL_READ_PATTERN, resp, 8);
+                    }
                 }
             }
             break;
         }
-        case CAN_PROTOCOL_TOGGLE_CALM: {
-            uint16_t length_ms = ((uint16_t)currentPayload[1] << 8) | (uint16_t)currentPayload[2];
-            calm_phase_t phase_offset = (calm_phase_t)currentPayload[3];
-            uint8_t channel_id = currentPayload[4];
-            LightUtils_ToggleCalm(channel_id, length_ms, phase_offset);
-            break;
-        }
+#endif
         case CAN_PROTOCOL_ENTER_BOOT:
             *MAGIC_ADDR = MAGIC_VAL;
             *NODEADDR_ADDR = ((uint32_t)NODEADDR_MAGIC << BOOT_NODE_SHIFT) | (uint32_t)ourAddr;

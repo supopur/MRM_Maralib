@@ -48,6 +48,19 @@ uint32_t GlobalSync_GetActiveMask(const GlobalSyncHandle *handle, uint32_t times
 ///@brief Get time remaining in current step in ms.
 uint16_t GlobalSync_GetTimeRemainingInStep(const GlobalSyncHandle *handle, uint32_t timestamp);
 
+///@brief Get elapsed time in current step in ms.
+uint16_t GlobalSync_GetElapsedInStep(const GlobalSyncHandle *handle, uint32_t timestamp);
+
+///@brief Get step index of the previous step in sequence.
+uint8_t GlobalSync_GetPrevStepIndex(const GlobalSyncHandle *handle, uint8_t curr_idx);
+
+///@brief Get step index of the next step in sequence.
+uint8_t GlobalSync_GetNextStepIndex(const GlobalSyncHandle *handle, uint8_t curr_idx);
+
+///@brief Calculate instantaneous brightness percentage (0-MAX_BRIGHTNESS) for a logical channel.
+///       Handles fade-in, dwell, fade-out, previous/next brightness, and DVI transitions.
+uint8_t GlobalSync_GetChannelBrightness(const GlobalSyncHandle *handle, uint8_t channel_id, uint32_t timestamp);
+
 ///@brief Get current pattern phase in ms.
 uint32_t GlobalSync_GetPhase(const GlobalSyncHandle *handle, uint32_t timestamp);
 
